@@ -124,7 +124,26 @@ ofPolyline ofxEvenlySpacedStreamlines::getSingleStreamline(ofVec2f seedPoint, of
             }
         }
         
-        if (checkBoundary || checkSink || checkSeparation) {
+        bool checkSelfIntersect = false;
+        if (!checkBoundary && !checkSink && !checkSeparation) {
+            float length = tmpLine.getPerimeter();
+            float distToLast = ofDist(newPoint.x, newPoint.y, lastPoint.x, lastPoint.y);
+            for (int i = 0; i < tmpLine.size() - 1; i++) {
+                if (length > dSep * sep) {
+                    if (ofDist(newPoint.x, newPoint.y, tmpLine.getVertices()[i].x, tmpLine.getVertices()[i].y) < dSep * sep && length > dSep * sep) {
+                        checkSelfIntersect = true;
+                        break;
+                    }
+                    ofVec2f checkCurr = tmpLine.getVertices()[i];
+                    ofVec2f checkNext = tmpLine.getVertices()[i + 1];
+                    length -= ofDist(checkCurr.x, checkCurr.y, checkNext.x, checkNext.y);
+                } else {
+                    break;
+                }
+            }
+        }
+        
+        if (checkBoundary || checkSink || checkSeparation || checkSelfIntersect) {
             if (!flipped) {
                 reverse(tmpLine.begin(), tmpLine.end());
                 flipped = true;
@@ -186,5 +205,54 @@ void ofxEvenlySpacedStreamlines::draw() {
         mesh.draw();
         
     }
+    
+}
+
+vector<vector<glm::vec3>> ofxEvenlySpacedStreamlines::getMeshes() {
+    
+    vector<vector<glm::vec3>> out;
+    
+    for (int i = 0; i < streamlines.size(); i++) {
+        
+        ofPolyline line = streamlines[i].getResampledBySpacing(2);
+        
+        vector<glm::vec3> mesh;
+        for (int j = 0; j < line.size(); j++) {
+            
+            ofVec2f curr = line.getVertices()[j];
+            
+            ofVec2f prev, next;
+            if (j > 0) prev = line.getVertices()[j - 1];
+            if (j < line.size() - 1) next = line.getVertices()[j + 1];
+            
+            float minDist = sep;
+            vector<particle> n = getNeighbors(curr.x, curr.y);
+            for (int k = 0; k < n.size(); k++) {
+                float dist = ofDist(curr.x, curr.y, n[k].pos.x, n[k].pos.y);
+                if (dist < minDist && i != n[k].index) minDist = dist;
+            }
+            
+            float mag = (minDist - dSep * sep) / (sep - dSep * sep) + dSep;
+            
+            ofVec2f dir;
+            if (j == 0) dir = next - curr;
+            if (j == line.size() - 1) dir = curr - prev;
+            else dir = next - prev;
+            dir.normalize();
+            dir.rotate(90);
+            dir *= mag;
+            
+            glm::vec3 p1(curr.x + dir.x, curr.y + dir.y, 0);
+            glm::vec3 p2(curr.x - dir.x, curr.y - dir.y, 0);
+            
+            mesh.push_back(p1);
+            mesh.push_back(p2);
+            
+        }
+        
+        out.push_back(mesh);
+    }
+    
+    return out;
     
 }

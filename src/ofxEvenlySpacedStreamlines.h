@@ -16,11 +16,12 @@ class ofxEvenlySpacedStreamlines {
         void setup(float sep, float dSep, int width, int height);
         vector<ofPolyline> getStreamlines(ofVec2f seedPoint, ofVec2f (*getVector)(ofVec2f, float));
         void draw();
+        vector<vector<glm::vec3>> getMeshes();
+        vector<particle> getNeighbors(float x, float y);
     
     private:
     
         ofPolyline getSingleStreamline(ofVec2f seedPoint, ofVec2f (*getVector)(ofVec2f, float));
-        vector<particle> getNeighbors(float x, float y);
     
         float sep, dSep;
         float time;

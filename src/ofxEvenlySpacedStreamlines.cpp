@@ -38,7 +38,9 @@ vector<ofPolyline> ofxEvenlySpacedStreamlines::getStreamlines(ofVec2f seedPoint,
     if ((!badBoundary && !badSeparation) || streamlines.size() == 0) {
         
         ofPolyline tmpLine = getSingleStreamline(seedPoint, getVector);
-        tmpLine = tmpLine.getResampledBySpacing(5);
+        if (tmpLine.size() > 10) {
+            tmpLine = tmpLine.getResampledBySpacing(5);
+        }
         
         if (tmpLine.size() > 10) {
             
@@ -47,7 +49,7 @@ vector<ofPolyline> ofxEvenlySpacedStreamlines::getStreamlines(ofVec2f seedPoint,
                 int xBin = p.pos.x / sep;
                 int yBin = p.pos.y / sep;
                 int bin = yBin * xBins + xBin;
-                if(xBin < xBins && yBin < yBins) bins[bin].push_back(p);
+                if(xBin >= 0 && xBin < xBins && yBin >= 0 && yBin < yBins) bins[bin].push_back(p);
             }
             
             streamlines.push_back(tmpLine);
@@ -126,7 +128,17 @@ ofPolyline ofxEvenlySpacedStreamlines::getSingleStreamline(ofVec2f seedPoint, of
         
         bool checkSelfIntersect = false;
         if (!checkBoundary && !checkSink && !checkSeparation) {
-            float length = tmpLine.getPerimeter();
+//            float length = tmpLine.getPerimeter();
+            
+            float length = 0;
+            if (tmpLine.size() > 1) {
+                for (int i = 0; i < tmpLine.size() - 1; i++) {
+                    glm::vec3 curr = tmpLine.getVertices()[i];
+                    glm::vec3 next = tmpLine.getVertices()[i + 1];
+                    length += ofDist(curr.x, curr.y, next.x, next.y);
+                }
+            }
+            
             float distToLast = ofDist(newPoint.x, newPoint.y, lastPoint.x, lastPoint.y);
             for (int i = 0; i < tmpLine.size() - 1; i++) {
                 if (length > dSep * sep) {

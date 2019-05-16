@@ -38,9 +38,9 @@ vector<ofPolyline> ofxEvenlySpacedStreamlines::getStreamlines(ofVec2f seedPoint,
     if ((!badBoundary && !badSeparation) || streamlines.size() == 0) {
         
         ofPolyline tmpLine = getSingleStreamline(seedPoint, getVector);
-        if (tmpLine.size() > 10) {
-            tmpLine = tmpLine.getResampledBySpacing(5);
-        }
+//        if (tmpLine.size() > 20) {
+//            tmpLine = tmpLine.getResampledBySpacing(5);
+//        }
         
         if (tmpLine.size() > 10) {
             
@@ -97,22 +97,22 @@ vector<particle> ofxEvenlySpacedStreamlines::getNeighbors(float x, float y) {
 
 ofPolyline ofxEvenlySpacedStreamlines::getSingleStreamline(ofVec2f seedPoint, ofVec2f (*getVector)(ofVec2f, float)) {
     
-    ofPolyline tmpLine;
-    tmpLine.addVertex(seedPoint.x, seedPoint.y);
+    ofPolyline _tmpLine;
+    _tmpLine.addVertex(seedPoint.x, seedPoint.y);
     
     bool done = false;
     bool flipped = false;
     
     while (!done) {
         
-        ofVec2f lastPoint = tmpLine.getVertices()[tmpLine.size() - 1];
+        ofVec2f lastPoint = _tmpLine.getVertices()[_tmpLine.size() - 1];
         ofVec2f direction = getVector(lastPoint, time);
         
         if (flipped) direction *= -1;
         
         ofVec2f newPoint = lastPoint + direction;
         
-        tmpLine.addVertex(newPoint.x, newPoint.y);
+        _tmpLine.addVertex(newPoint.x, newPoint.y);
         
         bool checkBoundary = newPoint.x < 0 || newPoint.x > width || newPoint.y < 0 || newPoint.y > height;
         bool checkSink = direction.length() < 0.1;
@@ -131,23 +131,23 @@ ofPolyline ofxEvenlySpacedStreamlines::getSingleStreamline(ofVec2f seedPoint, of
 //            float length = tmpLine.getPerimeter();
             
             float length = 0;
-            if (tmpLine.size() > 1) {
-                for (int i = 0; i < tmpLine.size() - 1; i++) {
-                    glm::vec3 curr = tmpLine.getVertices()[i];
-                    glm::vec3 next = tmpLine.getVertices()[i + 1];
+            if (_tmpLine.size() > 1) {
+                for (int i = 0; i < _tmpLine.size() - 1; i++) {
+                    glm::vec3 curr = _tmpLine.getVertices()[i];
+                    glm::vec3 next = _tmpLine.getVertices()[i + 1];
                     length += ofDist(curr.x, curr.y, next.x, next.y);
                 }
             }
             
             float distToLast = ofDist(newPoint.x, newPoint.y, lastPoint.x, lastPoint.y);
-            for (int i = 0; i < tmpLine.size() - 1; i++) {
+            for (int i = 0; i < _tmpLine.size() - 1; i++) {
                 if (length > dSep * sep) {
-                    if (ofDist(newPoint.x, newPoint.y, tmpLine.getVertices()[i].x, tmpLine.getVertices()[i].y) < dSep * sep && length > dSep * sep) {
+                    if (ofDist(newPoint.x, newPoint.y, _tmpLine.getVertices()[i].x, _tmpLine.getVertices()[i].y) < dSep * sep && length > dSep * sep) {
                         checkSelfIntersect = true;
                         break;
                     }
-                    ofVec2f checkCurr = tmpLine.getVertices()[i];
-                    ofVec2f checkNext = tmpLine.getVertices()[i + 1];
+                    ofVec2f checkCurr = _tmpLine.getVertices()[i];
+                    ofVec2f checkNext = _tmpLine.getVertices()[i + 1];
                     length -= ofDist(checkCurr.x, checkCurr.y, checkNext.x, checkNext.y);
                 } else {
                     break;
@@ -155,9 +155,9 @@ ofPolyline ofxEvenlySpacedStreamlines::getSingleStreamline(ofVec2f seedPoint, of
             }
         }
         
-        if (checkBoundary || checkSink || checkSeparation || checkSelfIntersect) {
+        if (checkBoundary || checkSink || checkSeparation || checkSelfIntersect || _tmpLine.size() > 50) {
             if (!flipped) {
-                reverse(tmpLine.begin(), tmpLine.end());
+                reverse(_tmpLine.begin(), _tmpLine.end());
                 flipped = true;
             } else {
                 done = true;
@@ -166,7 +166,7 @@ ofPolyline ofxEvenlySpacedStreamlines::getSingleStreamline(ofVec2f seedPoint, of
         
     }
     
-    return tmpLine;
+    return _tmpLine;
     
 }
 

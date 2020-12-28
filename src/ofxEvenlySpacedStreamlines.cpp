@@ -1,69 +1,59 @@
-
 #include "ofxEvenlySpacedStreamlines.h"
 
-void ofxEvenlySpacedStreamlines::setup(float _sep, float _dSep, int _width, int _height) {
-    
-    sep = _sep;
-    
-    dSep = _dSep;
-    
-    time = 0.2 * ofGetElapsedTimef();
-    
-    width = _width;
-    height = _height;
-    
-    xBins = ceil(width / sep);
-    yBins = ceil(height / sep);
-    
-    bins.clear();
-    bins.resize(xBins * yBins);
-    
+ofxEvenlySpacedStreamlines::ofxEvenlySpacedStreamlines() {
+    width = 100;
+    height = 100;
+    vectorField = [](glm::vec2 p)->glm::vec2{ return glm::vec2(1, 1); };
+    separationField = [](glm::vec2 p)->float{ return 30; };
+    dSeparationField = [](glm::vec2 p)->float{ return 0.5; };
+    quadtree = ofxQuadtree<Particle>(ofRectangle(0, 0, width, height), 4);
     streamlines.clear();
-    
 }
 
-vector<ofPolyline> ofxEvenlySpacedStreamlines::getStreamlines(ofVec2f seedPoint, ofVec2f (*getVector)(ofVec2f, float)) {
+ofxEvenlySpacedStreamlines::ofxEvenlySpacedStreamlines(int _width, int _height, function<glm::vec2(glm::vec2)> _vectorField, function<float(glm::vec2)> _separationField, function<float(glm::vec2)> _dSeparationField) {
+    width = _width;
+    height = _height;
+    vectorField = _vectorField;
+    separationField = _separationField;
+    dSeparationField = _dSeparationField;
+    quadtree = ofxQuadtree<Particle>(ofRectangle(0, 0, width, height), 4);
+    streamlines.clear();
+}
+
+void ofxEvenlySpacedStreamlines::reset() {
+    quadtree = ofxQuadtree<Particle>(ofRectangle(0, 0, width, height), 4);
+    streamlines.clear();
+}
+
+void ofxEvenlySpacedStreamlines::calculateStreamlines(glm::vec2 seedPoint) {
     
-    // is valid seed point?
-    bool badBoundary = seedPoint.x < 0 || seedPoint.x > width || seedPoint.y < 0 || seedPoint.y > height;
-    bool badSeparation = false;
-    vector<particle> n = getNeighbors(seedPoint.x, seedPoint.y);
-    for (int i = 0; i < n.size(); i++) {
-        if (ofDist(seedPoint.x, seedPoint.y, n[i].pos.x, n[i].pos.y) < dSep * sep) {
-            badSeparation = true;
-            break;
-        }
-    }
+    bool bBoundaryGood = isBoundaryGood(seedPoint);
+    bool bSeparationGood = isSeparationGood(seedPoint);
     
-    if ((!badBoundary && !badSeparation) || streamlines.size() == 0) {
+    if ((bBoundaryGood && bSeparationGood) || streamlines.size() == 0) {
         
-        ofPolyline tmpLine = getSingleStreamline(seedPoint, getVector);
-//        if (tmpLine.size() > 20) {
-//            tmpLine = tmpLine.getResampledBySpacing(5);
-//        }
-        
+        ofPolyline tmpLine = getSingleStreamline(seedPoint);
         if (tmpLine.size() > 10) {
+            tmpLine = tmpLine.getResampledBySpacing(5);
+        }
+        
+        if (tmpLine.size() > 3) {
             
             for (int i = 0; i < tmpLine.size(); i++) {
-                particle p(tmpLine.getVertices()[i], streamlines.size());
-                int xBin = p.pos.x / sep;
-                int yBin = p.pos.y / sep;
-                int bin = yBin * xBins + xBin;
-                if(xBin >= 0 && xBin < xBins && yBin >= 0 && yBin < yBins) bins[bin].push_back(p);
+                Particle p(tmpLine.getVertices()[i], streamlines.size());
+                quadtree.put(make_shared<Particle>(p));
             }
             
             streamlines.push_back(tmpLine);
             
             for (int i = 0; i < tmpLine.size(); i++) {
-                ofVec2f p = tmpLine.getVertices()[i];
-                ofVec2f o = getVector(p, time);
-                o.normalize();
-                o.rotate(90);
-                o *= sep;
-//                if (streamlines.size() < 10) {
-                    getStreamlines(p + o, getVector);
-                    getStreamlines(p - o, getVector);
-//                }
+                glm::vec2 p = tmpLine.getVertices()[i];
+                glm::vec2 o = vectorField(p);
+                o = glm::normalize(o);
+                o = glm::rotate(o, float(0.5 * PI));
+                o *= separationField(p);
+                calculateStreamlines(p + o);
+                calculateStreamlines(p - o);
             }
             
         }
@@ -73,29 +63,11 @@ vector<ofPolyline> ofxEvenlySpacedStreamlines::getStreamlines(ofVec2f seedPoint,
     
 }
 
-vector<particle> ofxEvenlySpacedStreamlines::getNeighbors(float x, float y) {
-    
-    vector<particle> neighbors;
-    
-    int xBin = x / sep;
-    int yBin = y / sep;
-    int bin = yBin * xBins + xBin;
-    
-    for (int i = -1; i <= 1; i++) {
-        for (int j = -1; j <= 1; j++) {
-            if (xBin + i >= 0 && xBin + i < xBins && yBin + j >= 0 && yBin + j < yBins) {
-                int binIndex = (yBin + j) * xBins + (xBin + i);
-                vector<particle> particles = bins[binIndex];
-                neighbors.insert(neighbors.end(), particles.begin(), particles.end());
-            }
-        }
-    }
-    
-    return neighbors;
-    
+vector<shared_ptr<Particle>> ofxEvenlySpacedStreamlines::getNeighbors(glm::vec2 p, float size) {
+    return quadtree.get(ofRectangle(p.x - size, p.y - size, 2 * size, 2 * size));
 }
 
-ofPolyline ofxEvenlySpacedStreamlines::getSingleStreamline(ofVec2f seedPoint, ofVec2f (*getVector)(ofVec2f, float)) {
+ofPolyline ofxEvenlySpacedStreamlines::getSingleStreamline(glm::vec2 seedPoint) {
     
     ofPolyline _tmpLine;
     _tmpLine.addVertex(seedPoint.x, seedPoint.y);
@@ -104,58 +76,22 @@ ofPolyline ofxEvenlySpacedStreamlines::getSingleStreamline(ofVec2f seedPoint, of
     bool flipped = false;
     
     while (!done) {
-        
-        ofVec2f lastPoint = _tmpLine.getVertices()[_tmpLine.size() - 1];
-        ofVec2f direction = getVector(lastPoint, time);
+        glm::vec2 lastPoint = _tmpLine.getVertices()[_tmpLine.size() - 1];
+        glm::vec2 direction = vectorField(lastPoint);
         
         if (flipped) direction *= -1;
         
-        ofVec2f newPoint = lastPoint + direction;
+        glm::vec2 newPoint = lastPoint + direction;
         
         _tmpLine.addVertex(newPoint.x, newPoint.y);
         
-        bool checkBoundary = newPoint.x < 0 || newPoint.x > width || newPoint.y < 0 || newPoint.y > height;
-        bool checkSink = direction.length() < 0.1;
-        bool checkSeparation = false;
+        bool bGood = true;
+        if (bGood && !isBoundaryGood(newPoint)) bGood = false;
+        if (bGood && !isSinkGood(glm::length(direction))) bGood = false;
+        if (bGood && !isSeparationGood(newPoint)) bGood = false;
+        if (bGood && !isSelfIntersectGood(_tmpLine, newPoint)) bGood = false;
         
-        vector<particle> n = getNeighbors(newPoint.x, newPoint.y);
-        for (int i = 0; i < n.size(); i++) {
-            if (ofDist(newPoint.x, newPoint.y, n[i].pos.x, n[i].pos.y) < dSep * sep) {
-                checkSeparation = true;
-                break;
-            }
-        }
-        
-        bool checkSelfIntersect = false;
-        if (!checkBoundary && !checkSink && !checkSeparation) {
-//            float length = tmpLine.getPerimeter();
-            
-            float length = 0;
-            if (_tmpLine.size() > 1) {
-                for (int i = 0; i < _tmpLine.size() - 1; i++) {
-                    glm::vec3 curr = _tmpLine.getVertices()[i];
-                    glm::vec3 next = _tmpLine.getVertices()[i + 1];
-                    length += ofDist(curr.x, curr.y, next.x, next.y);
-                }
-            }
-            
-            float distToLast = ofDist(newPoint.x, newPoint.y, lastPoint.x, lastPoint.y);
-            for (int i = 0; i < _tmpLine.size() - 1; i++) {
-                if (length > dSep * sep) {
-                    if (ofDist(newPoint.x, newPoint.y, _tmpLine.getVertices()[i].x, _tmpLine.getVertices()[i].y) < dSep * sep && length > dSep * sep) {
-                        checkSelfIntersect = true;
-                        break;
-                    }
-                    ofVec2f checkCurr = _tmpLine.getVertices()[i];
-                    ofVec2f checkNext = _tmpLine.getVertices()[i + 1];
-                    length -= ofDist(checkCurr.x, checkCurr.y, checkNext.x, checkNext.y);
-                } else {
-                    break;
-                }
-            }
-        }
-        
-        if (checkBoundary || checkSink || checkSeparation || checkSelfIntersect || _tmpLine.size() > 50) {
+        if (!bGood) {
             if (!flipped) {
                 reverse(_tmpLine.begin(), _tmpLine.end());
                 flipped = true;
@@ -163,87 +99,44 @@ ofPolyline ofxEvenlySpacedStreamlines::getSingleStreamline(ofVec2f seedPoint, of
                 done = true;
             }
         }
-        
     }
     
     return _tmpLine;
     
 }
 
-void ofxEvenlySpacedStreamlines::draw() {
-    
+void ofxEvenlySpacedStreamlines::drawStreamlines() {
     for (int i = 0; i < streamlines.size(); i++) {
-        
-        ofPolyline line = streamlines[i];
-        
-        ofMesh mesh;
-        mesh.setMode(OF_PRIMITIVE_TRIANGLE_STRIP);
-        
-        for (int j = 0; j < line.size(); j++) {
-            
-            ofVec2f curr = line.getVertices()[j];
-            
-            ofVec2f prev, next;
-            if (j > 0) prev = line.getVertices()[j - 1];
-            if (j < line.size() - 1) next = line.getVertices()[j + 1];
-            
-            float minDist = sep;
-            vector<particle> n = getNeighbors(curr.x, curr.y);
-            for (int k = 0; k < n.size(); k++) {
-                float dist = ofDist(curr.x, curr.y, n[k].pos.x, n[k].pos.y);
-                if (dist < minDist && i != n[k].index) minDist = dist;
-            }
-            
-            float mag = (minDist - dSep * sep) / (sep - dSep * sep) + dSep;
-            
-            ofVec2f dir;
-            if (j == 0) dir = next - curr;
-            if (j == line.size() - 1) dir = curr - prev;
-            else dir = next - prev;
-            dir.normalize();
-            dir.rotate(90);
-            dir *= mag;
-            
-            glm::vec3 p1(curr.x + dir.x, curr.y + dir.y, 0);
-            glm::vec3 p2(curr.x - dir.x, curr.y - dir.y, 0);
-            
-            mesh.addVertex(p1);
-            mesh.addVertex(p2);
-            mesh.addColor(ofColor(0));
-            mesh.addColor(ofColor(0));
-            
-        }
-        
-        mesh.draw();
-        
+        streamlines[i].draw();
     }
-    
 }
 
-vector<vector<glm::vec3>> ofxEvenlySpacedStreamlines::getMeshes() {
+vector<vector<glm::vec2>> ofxEvenlySpacedStreamlines::getStreamlineMeshes() {
     
-    vector<vector<glm::vec3>> out;
+    vector<vector<glm::vec2>> out;
     
     for (int i = 0; i < streamlines.size(); i++) {
         
         ofPolyline line = streamlines[i].getResampledBySpacing(2);
         
-        vector<glm::vec3> mesh;
+        vector<glm::vec2> mesh;
         for (int j = 0; j < line.size(); j++) {
             
-            ofVec2f curr = line.getVertices()[j];
+            glm::vec2 curr = line.getVertices()[j];
             
-            ofVec2f prev, next;
+            glm::vec2 prev, next;
             if (j > 0) prev = line.getVertices()[j - 1];
             if (j < line.size() - 1) next = line.getVertices()[j + 1];
             
-            float minDist = sep;
-            vector<particle> n = getNeighbors(curr.x, curr.y);
+            float minDist = separationField(curr);
+            vector<shared_ptr<Particle>> n = getNeighbors(curr, minDist);
             for (int k = 0; k < n.size(); k++) {
-                float dist = ofDist(curr.x, curr.y, n[k].pos.x, n[k].pos.y);
-                if (dist < minDist && i != n[k].index) minDist = dist;
+                float dist = ofDist(curr.x, curr.y, n[k]->getXPos(), n[k]->getYPos());
+                if (dist < minDist && i != n[k]->lineIndex) minDist = dist;
             }
             
+            float sep = separationField(curr);
+            float dSep = dSeparationField(curr);
             float mag = (minDist - dSep * sep) / (sep - dSep * sep) + dSep;
             
             ofVec2f dir;
@@ -252,10 +145,10 @@ vector<vector<glm::vec3>> ofxEvenlySpacedStreamlines::getMeshes() {
             else dir = next - prev;
             dir.normalize();
             dir.rotate(90);
-            dir *= mag;
+            dir *= 1.0 * mag;
             
-            glm::vec3 p1(curr.x + dir.x, curr.y + dir.y, 0);
-            glm::vec3 p2(curr.x - dir.x, curr.y - dir.y, 0);
+            glm::vec2 p1(curr.x + dir.x, curr.y + dir.y);
+            glm::vec2 p2(curr.x - dir.x, curr.y - dir.y);
             
             mesh.push_back(p1);
             mesh.push_back(p2);
@@ -267,4 +160,102 @@ vector<vector<glm::vec3>> ofxEvenlySpacedStreamlines::getMeshes() {
     
     return out;
     
+}
+
+void ofxEvenlySpacedStreamlines::drawStreamlineMeshes() {
+    
+    for (int i = 0; i < streamlines.size(); i++) {
+        
+        ofPolyline line = streamlines[i].getResampledBySpacing(2);
+        
+        ofMesh mesh;
+        mesh.setMode(OF_PRIMITIVE_TRIANGLE_STRIP);
+        for (int j = 0; j < line.size(); j++) {
+            
+            glm::vec2 curr = line.getVertices()[j];
+            
+            glm::vec2 prev, next;
+            if (j > 0) prev = line.getVertices()[j - 1];
+            if (j < line.size() - 1) next = line.getVertices()[j + 1];
+            
+            float minDist = separationField(curr);
+            vector<shared_ptr<Particle>> n = getNeighbors(curr, minDist);
+            for (int k = 0; k < n.size(); k++) {
+                float dist = ofDist(curr.x, curr.y, n[k]->getXPos(), n[k]->getYPos());
+                if (dist < minDist && i != n[k]->lineIndex) minDist = dist;
+            }
+            
+            float sep = separationField(curr);
+            float dSep = dSeparationField(curr);
+            float mag = (minDist - dSep * sep) / (sep - dSep * sep) + dSep;
+            
+            ofVec2f dir;
+            if (j == 0) dir = next - curr;
+            if (j == line.size() - 1) dir = curr - prev;
+            else dir = next - prev;
+            dir.normalize();
+            dir.rotate(90);
+            dir *= 1.0 * mag;
+            
+            glm::vec3 p1(curr.x + dir.x, curr.y + dir.y, 0);
+            glm::vec3 p2(curr.x - dir.x, curr.y - dir.y, 0);
+            
+            mesh.addVertex(p1);
+            mesh.addColor(ofColor(0));
+            mesh.addVertex(p2);
+            mesh.addColor(ofColor(0));
+            
+        }
+        
+        mesh.draw();
+        
+    }
+    
+}
+
+vector<ofPolyline> ofxEvenlySpacedStreamlines::getStreamlines() {
+    return streamlines;
+}
+
+bool ofxEvenlySpacedStreamlines::isBoundaryGood(glm::vec2 p) {
+    return p.x > 0 && p.x < width && p.y > 0 && p.y < height;
+}
+
+bool ofxEvenlySpacedStreamlines::isSeparationGood(glm::vec2 p) {
+    vector<shared_ptr<Particle>> n = getNeighbors(p, separationField(p));
+    float sep = separationField(p);
+    float dSep = dSeparationField(p);
+    for (int i = 0; i < n.size(); i++) {
+        if (ofDist(p.x, p.y, n[i]->getXPos(), n[i]->getYPos()) < dSep * sep) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool ofxEvenlySpacedStreamlines::isSinkGood(float length) {
+    return length > 0.01;
+}
+
+bool ofxEvenlySpacedStreamlines::isSelfIntersectGood(ofPolyline line, glm::vec2 newPoint) {
+    if (line.size() > 0) {
+        float sep = separationField(newPoint);
+        float dSep = dSeparationField(newPoint);
+        float length = ofDist(newPoint.x, newPoint.y, line.getVertices()[line.size() - 1].x, line.getVertices()[line.size() - 1].y);
+        for (int i = line.size() - 1; i >= 0; i--) {
+            glm::vec2 curr = line.getVertices()[i];
+            if (length > dSep * sep) {
+                if (ofDist(newPoint.x, newPoint.y, curr.x, curr.y) < dSep * sep) {
+                    return false;
+                }
+            }
+            if (i > 0) {
+                glm::vec2 next = line.getVertices()[i - 1];
+                length += ofDist(curr.x, curr.y, next.x, next.y);
+            }
+        }
+    } else {
+        return true;
+    }
+    return true;
 }

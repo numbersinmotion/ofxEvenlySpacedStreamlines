@@ -19,8 +19,8 @@ class ofxEvenlySpacedStreamlines {
     
     public:
         
-        ess();
-        ess(int _width, int _height, function<glm::vec2(glm::vec2)> _vectorField, function<float(glm::vec2)> _separationField, function<float(glm::vec2)> _dSeparationField);
+        ofxEvenlySpacedStreamlines();
+        ofxEvenlySpacedStreamlines(int _width, int _height, function<glm::vec2(glm::vec2)> _vectorField, function<float(glm::vec2)> _separationField, function<float(glm::vec2)> _dSeparationField);
     
         void reset();
         void calculateStreamlines(glm::vec2 seedPoint);

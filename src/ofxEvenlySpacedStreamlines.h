@@ -1,33 +1,48 @@
 #pragma once
 
 #include "ofMain.h"
+#include "ofxQuadtree.h"
 
-class particle {
-    public:
-        ofVec2f pos;
-        int index;
-        particle(ofVec2f pos, int index) : pos(pos), index(index) {}
+class Particle {
+public:
+    glm::vec2 position;
+    int lineIndex;
+    Particle(glm::vec2 _position, int _lineIndex) {
+        position = _position;
+        lineIndex = _lineIndex;
+    }
+    float getXPos() { return position.x; }
+    float getYPos() { return position.y; }
 };
 
 class ofxEvenlySpacedStreamlines {
     
     public:
+        
+        ess();
+        ess(int _width, int _height, function<glm::vec2(glm::vec2)> _vectorField, function<float(glm::vec2)> _separationField, function<float(glm::vec2)> _dSeparationField);
     
-        void setup(float sep, float dSep, int width, int height);
-        vector<ofPolyline> getStreamlines(ofVec2f seedPoint, ofVec2f (*getVector)(ofVec2f, float));
-        void draw();
-        vector<vector<glm::vec3>> getMeshes();
-        vector<particle> getNeighbors(float x, float y);
+        void reset();
+        void calculateStreamlines(glm::vec2 seedPoint);
+        vector<ofPolyline> getStreamlines();
+        void drawStreamlines();
+        vector<vector<glm::vec2>> getStreamlineMeshes();
+        void drawStreamlineMeshes();
     
     private:
     
-        ofPolyline getSingleStreamline(ofVec2f seedPoint, ofVec2f (*getVector)(ofVec2f, float));
+        vector<shared_ptr<Particle>> getNeighbors(glm::vec2 p, float size);
+        ofPolyline getSingleStreamline(glm::vec2 seedPoint);
+        bool isBoundaryGood(glm::vec2 p);
+        bool isSeparationGood(glm::vec2 p);
+        bool isSinkGood(float length);
+        bool isSelfIntersectGood(ofPolyline line, glm::vec2 newPoint);
     
-        float sep, dSep;
-        float time;
+        function<glm::vec2(glm::vec2)> vectorField;
+        function<float(glm::vec2)> separationField;
+        function<float(glm::vec2)> dSeparationField;
         int width, height;
-        int xBins, yBins;
-        vector<vector<particle>> bins;
+        ofxQuadtree<Particle> quadtree;
         vector<ofPolyline> streamlines;
     
 };
